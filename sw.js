@@ -1,5 +1,7 @@
-/* Bryggeboka service worker – enkel offline-cache */
-var CACHE = "bryggeboka-v1";
+/* Bryggeboka service worker – offline-cache
+   Sider og manifest hentes fra nettet først (så oppdateringer kommer fram),
+   med cachen som reserve uten nett. Ikoner hentes fra cachen først. */
+var CACHE = "bryggeboka-v2";
 var ASSETS = [
   "./",
   "./index.html",
@@ -27,24 +29,45 @@ self.addEventListener("activate", function (e) {
   );
 });
 
+// Bare vanlige svar fra vår egen side skal i cachen – ikke feilsider
+// eller omdirigeringer (f.eks. til en innloggingsside).
+function cacheable(res) {
+  return res && res.ok && res.type === "basic" && !res.redirected;
+}
+
+function put(req, res) {
+  var copy = res.clone();
+  caches.open(CACHE).then(function (c) { c.put(req, copy); });
+}
+
 self.addEventListener("fetch", function (e) {
-  if (e.request.method !== "GET") return;
-  e.respondWith(
-    caches.match(e.request).then(function (hit) {
-      if (hit) return hit;
-      return fetch(e.request).then(function (res) {
-        // legg nye same-origin GET-svar i cachen
-        try {
-          var url = new URL(e.request.url);
-          if (url.origin === self.location.origin) {
-            var copy = res.clone();
-            caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
-          }
-        } catch (err) {}
+  var req = e.request;
+  if (req.method !== "GET") return;
+  var url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
+  var isPage = req.mode === "navigate" || /\.(html|webmanifest)$/.test(url.pathname) || url.pathname.slice(-1) === "/";
+
+  if (isPage) {
+    e.respondWith(
+      fetch(req).then(function (res) {
+        if (cacheable(res)) put(req, res);
         return res;
       }).catch(function () {
-        // offline-fallback for navigasjon
-        if (e.request.mode === "navigate") return caches.match("./index.html");
+        return caches.match(req).then(function (hit) {
+          return hit || caches.match("./index.html");
+        });
+      })
+    );
+    return;
+  }
+
+  e.respondWith(
+    caches.match(req).then(function (hit) {
+      if (hit) return hit;
+      return fetch(req).then(function (res) {
+        if (cacheable(res)) put(req, res);
+        return res;
       });
     })
   );

@@ -209,7 +209,7 @@ body.brewing #app{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
 </style>
 </head>
 <body>
-<div id="app" aria-live="polite"></div>
+<div id="app"></div>
 <nav class="tabs" aria-label="Hovedmeny"><div class="in" id="tabs"></div></nav>
 <div class="toast" id="toast" role="status"></div>
 
@@ -567,16 +567,16 @@ function viewMethod(m){
       var wMin=m.waterMin||150, wMax=m.waterMax||2000, wStep=m.waterMax&&m.waterMax<=300?10:50;
       calc='<div class="calc">'+
         '<div><label class="f">Vann</label><div class="stepper"><button data-a="w-" aria-label="Mindre vann">−</button><div class="val big num">'+c.water+'<small>g</small></div><button data-a="w+" aria-label="Mer vann">+</button></div></div>'+
-        '<div><label class="f">Kaffe</label><div class="big num">'+fmt1(c.dose)+'<small>g</small></div></div></div>'+
+        '<div><label class="f">Kaffe</label><div class="big num" id="out1">'+fmt1(c.dose)+'<small>g</small></div></div></div>'+
         '<div class="chips" style="margin-top:12px">'+m.presets.map(function(p){return '<button class="chip" data-p="'+p+'" aria-pressed="'+(p===c.water)+'">'+(p>=1000?fmt1(p/1000)+' l':p+' g')+'</button>';}).join("")+'</div>'+
-        '<div style="margin-top:14px"><div class="spread small"><label class="f" for="ratio" style="margin:0">Styrke</label><span class="num"><b>'+c.ratio+' g/l</b> <span class="muted">(1:'+fmt1(c.oneTo)+')</span></span></div>'+
+        '<div style="margin-top:14px"><div class="spread small"><label class="f" for="ratio" style="margin:0">Styrke</label><span class="num" id="out2"><b>'+c.ratio+' g/l</b> <span class="muted">(1:'+fmt1(c.oneTo)+')</span></span></div>'+
         '<input id="ratio" type="range" min="'+m.ratioMin+'" max="'+m.ratioMax+'" step="1" value="'+c.ratio+'"></div>';
       paint.wStep=wStep;paint.wMin=wMin;paint.wMax=wMax;
     } else if(m.mode==="dose"){
       calc='<div class="calc">'+
         '<div><label class="f">Kaffe inn</label><div class="stepper"><button data-a="d-" aria-label="Mindre kaffe">−</button><div class="val big num">'+fmt1(c.dose)+'<small>g</small></div><button data-a="d+" aria-label="Mer kaffe">+</button></div></div>'+
-        '<div><label class="f">Espresso ut</label><div class="big num">'+c.yield+'<small>g</small></div></div></div>'+
-        '<div style="margin-top:14px"><div class="spread small"><label class="f" for="ratio" style="margin:0">Forhold</label><span class="num"><b>1:'+fmt1(c.yieldRatio)+'</b></span></div>'+
+        '<div><label class="f">Espresso ut</label><div class="big num" id="out1">'+c.yield+'<small>g</small></div></div></div>'+
+        '<div style="margin-top:14px"><div class="spread small"><label class="f" for="ratio" style="margin:0">Forhold</label><span class="num" id="out2"><b>1:'+fmt1(c.yieldRatio)+'</b></span></div>'+
         '<input id="ratio" type="range" min="'+m.ratioMin+'" max="'+m.ratioMax+'" step="0.1" value="'+c.yieldRatio+'"></div>';
     } else {
       calc='<div class="calc">'+
@@ -615,8 +615,15 @@ function viewMethod(m){
     };});
     $app.querySelectorAll("[data-p]").forEach(function(b){b.onclick=function(){s.water=+b.getAttribute("data-p");saveSettings(m,s);paint();};});
     var rr=document.getElementById("ratio");
-    if(rr){rr.oninput=function(){if(m.mode==="water")s.ratio=+rr.value;else s.yieldRatio=+rr.value;saveSettings(m,s);
-      var y=window.scrollY;paint();window.scrollTo(0,y);var n=document.getElementById("ratio");if(n)n.focus();};}
+    if(rr){
+      rr.oninput=function(){
+        if(m.mode==="water")s.ratio=+rr.value;else s.yieldRatio=+rr.value;
+        var c=compute(m,s);
+        document.getElementById("out1").innerHTML=(m.mode==="water"?fmt1(c.dose):c.yield)+'<small>g</small>';
+        document.getElementById("out2").innerHTML=m.mode==="water"?'<b>'+c.ratio+' g/l</b> <span class="muted">(1:'+fmt1(c.oneTo)+')</span>':'<b>1:'+fmt1(c.yieldRatio)+'</b>';
+      };
+      rr.onchange=function(){saveSettings(m,s);var y=window.scrollY;paint();window.scrollTo(0,y);};
+    }
     var g=document.getElementById("grinder");
     g.onchange=function(){store("grind:"+m.id,g.value.trim());toast("Kverninnstilling lagret");};
   }
@@ -651,7 +658,7 @@ function releaseWake(){try{if(timer.wake){timer.wake.release();timer.wake=null;}
 document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"&&timer.running)requestWake();});
 
 function stopTimer(){
-  timer.running=false;cancelAnimationFrame(timer.raf);releaseWake();
+  timer.running=false;clearTimeout(timer.raf);releaseWake();
 }
 function curElapsed(){return timer.running?(timer.elapsed+(performance.now()-timer.start)/1000):timer.elapsed;}
 
@@ -665,7 +672,7 @@ function viewBrew(m){
   $app.innerHTML=topbar(esc(m.name),summary,"#/method/"+m.id)+
     '<div class="card" id="prepCard"><h3 style="margin-bottom:6px">Før du starter</h3><ol class="steps">'+m.prep.map(function(t){return '<li>'+esc(fillPrep(t,c))+'</li>';}).join("")+'</ol></div>'+
     '<div class="timerwrap"><div class="clock" id="clock">0:00</div><div class="prog"><i id="prog"></i></div><div class="small muted num" id="tot">av ca. '+mmss(total)+'</div></div>'+
-    '<div class="now" id="now"></div>'+
+    '<div class="now" id="now" aria-live="polite"></div>'+
     '<div class="next" id="next"></div>'+
     '<div class="controls">'+
       '<button class="btn" id="bReset" aria-label="Nullstill">'+IC.reset+'</button>'+
@@ -700,7 +707,8 @@ function viewBrew(m){
       if(timer.idx>=0||t>0.5)beep(steps[i].end);
       timer.idx=i;showStep(i,t);
     } else {var cd=document.getElementById("cd");if(cd&&steps[i+1])cd.textContent=mmss(steps[i+1].t-t);}
-    if(timer.running)timer.raf=requestAnimationFrame(tick);
+    clearTimeout(timer.raf);
+    if(timer.running)timer.raf=setTimeout(tick,200);
   }
   function setPlay(){bPlay.innerHTML=timer.running?IC.pause+" Pause":IC.play+(timer.elapsed>0?" Fortsett":" Start");}
   bPlay.onclick=function(){
@@ -774,7 +782,7 @@ function toolRatio(){
     $app.innerHTML=topbar("Forholdsberegner","Verktøy","#/tools")+
       '<div class="card stack">'+
         '<div><label class="f" for="rw">Vann (g)</label><input class="t num" id="rw" type="number" inputmode="numeric" min="10" max="5000" value="'+st.water+'"></div>'+
-        '<div><div class="spread"><label class="f" for="rr" style="margin:0">Styrke</label><b class="num">'+st.ratio+' g/l · 1:'+fmt1(1000/st.ratio)+'</b></div><input id="rr" type="range" min="50" max="90" value="'+st.ratio+'"></div>'+
+        '<div><div class="spread"><label class="f" for="rr" style="margin:0">Styrke</label><b class="num" id="rrOut">'+st.ratio+' g/l · 1:'+fmt1(1000/st.ratio)+'</b></div><input id="rr" type="range" min="50" max="90" value="'+st.ratio+'"></div>'+
         '<div class="spread" style="padding-top:6px"><span class="muted">Kaffe</span><span class="big num">'+fmt1(dose)+'<small>g</small></span></div>'+
         '<div class="spread"><span class="muted">Ca. ferdig kaffe</span><span class="num"><b>'+r(st.water-dose*2)+' g</b> <span class="small muted">(grut holder ca. 2× sin vekt)</span></span></div>'+
       '</div>'+
@@ -782,7 +790,8 @@ function toolRatio(){
       '<div class="section note">Tims tommelfingerregel er 65 g/l for filter, 65–70 g/l for stempelkanne og 70 g/l for AeroPress (14 g / 200 g).</div>';
     var rw=document.getElementById("rw"),rr=document.getElementById("rr"),rd=document.getElementById("rd");
     rw.onchange=function(){var v=+rw.value;if(v>0){st.water=Math.round(v);store("ratioTool",st);paint();}};
-    rr.oninput=function(){st.ratio=+rr.value;store("ratioTool",st);var y=window.scrollY;paint();window.scrollTo(0,y);document.getElementById("rr").focus();};
+    rr.oninput=function(){st.ratio=+rr.value;document.getElementById("rrOut").textContent=st.ratio+" g/l · 1:"+fmt1(1000/st.ratio);};
+    rr.onchange=function(){store("ratioTool",st);var y=window.scrollY;paint();window.scrollTo(0,y);};
     rd.oninput=function(){var v=parseFloat(String(rd.value).replace(",","."));document.getElementById("rdOut").innerHTML=v>0?'Bruk ca. <b>'+r(v*1000/st.ratio)+' g vann</b> ved '+st.ratio+' g/l.':"";};
   }
   paint();
@@ -944,6 +953,7 @@ function viewLogForm(){
 
 /* ---------- oppstart ---------- */
 route();
+try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
 if("serviceWorker" in navigator && location.protocol!=="file:"){
   window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){});});
 }
